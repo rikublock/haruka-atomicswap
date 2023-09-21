@@ -1,0 +1,14 @@
+version: "3.9"
+name: haruka-dev
+
+services:
+  bitcoin:
+    build:
+      context: ./bitcoin/
+    restart: unless-stopped
+    volumes:
+      - "./bitcoin/scripts:/scripts"
+    entrypoint: /scripts/entry-dev.sh
+    # TODO: Use expose, not ports
+    ports:
+      - "18443:18443"
