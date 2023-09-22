@@ -1,5 +1,7 @@
 import { RpcClient } from "./rpc";
 
+const MIN_BLOCKS = 101;
+
 describe("btc rpc client", () => {
   const client = new RpcClient("haruka", "password", "localhost", 18443);
 
@@ -8,6 +10,13 @@ describe("btc rpc client", () => {
       await client.createWallet("default");
     } catch (err) {
       // pass
+    }
+
+    // ensure we have available coins to spend
+    const count = await client.getBlockCount();
+    if (count < MIN_BLOCKS) {
+      const address = await client.getNewAddress();
+      await client.generateToAddress(MIN_BLOCKS - count, address);
     }
   });
 
@@ -44,16 +53,25 @@ describe("btc rpc client", () => {
   test("rpc generateToAddress", async () => {
     const address = await client.getNewAddress();
     const result = await client.generateToAddress(1, address);
-    console.log(result);
+    expect(result.length).toBe(1);
   });
 
   // test("rpc getTransaction", async () => {
-  //   const result = await client.getTransaction(hash);
+  //   const address = await client.getNewAddress();
+  //   const hashes = await client.generateToAddress(1, address);
+  //   const result = await client.getTransaction(hashes[0]);
   //   console.log(result);
+  //   expect(result).toBeDefined();
   // });
 
   // test("rpc sendRawTransaction", async () => {
   //   const result = await client.sendRawTransaction(hash);
   //   console.log(result);
   // });
+
+  test("rpc sendToAddress", async () => {
+    const address = await client.getNewAddress();
+    const result = await client.sendToAddress(address, 0.22);
+    console.log(result);
+  });
 });

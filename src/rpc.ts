@@ -96,6 +96,19 @@ export class RpcClient {
     ])) as string;
   }
 
+  public async listUnspent(
+    minconf: number = 1,
+    maxconf: number = 9999999,
+    addresses: string[] = []
+  ): Promise<Record<string, any>> {
+    return await this.request("listunspent", [
+      minconf,
+      maxconf,
+      addresses,
+      true,
+    ]);
+  }
+
   public async generateToAddress(
     nblocks: number,
     address: string,
@@ -108,14 +121,21 @@ export class RpcClient {
     ])) as string[];
   }
 
-  public async getTransaction(
+  public async getRawTransaction(
     txid: string,
     verbose: boolean = true
   ): Promise<Record<string, any>> {
-    return await this.request("gettransaction", [txid, true, verbose]);
+    return await this.request("getrawtransaction", [txid, verbose]);
   }
 
   public async sendRawTransaction(hexstring: string): Promise<string> {
     return (await this.request("sendrawtransaction", [hexstring])) as string;
+  }
+
+  public async sendToAddress(
+    address: string,
+    amount: number | string
+  ): Promise<string> {
+    return (await this.request("sendtoaddress", [address, amount])) as string;
   }
 }
