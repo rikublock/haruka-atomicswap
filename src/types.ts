@@ -1,5 +1,5 @@
 export type KeyInfo = {
   address: string;
-  pubkey: string;
-  privkey: string;
+  pubkey: Buffer;
+  privkey: Buffer;
 };

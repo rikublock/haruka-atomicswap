@@ -96,7 +96,7 @@ describe("swap classes", () => {
       bitcoin.Transaction.SIGHASH_ALL
     );
 
-    const signer = ECPair.fromPrivateKey(Buffer.from(bob.privkey, "hex"));
+    const signer = ECPair.fromPrivateKey(bob.privkey);
 
     const redeemScriptSig = bitcoin.payments.p2sh({
       network: regtest,
@@ -108,6 +108,7 @@ describe("swap classes", () => {
             signer.sign(signatureHash),
             bitcoin.Transaction.SIGHASH_ALL
           ),
+          bob.pubkey,
           Buffer.from(secret.secret, "hex"),
           bitcoin.opcodes.OP_TRUE, // for the OP_IF
         ]),
@@ -115,13 +116,6 @@ describe("swap classes", () => {
     }).input;
 
     tx.setInputScript(0, redeemScriptSig!);
-
-    console.log(bitcoin.script.toASM(redeemScript));
-    console.log(redeemScript.toString("hex"));
-    console.log(bitcoin.script.toASM(tx.ins[0].script));
-
-    console.log(tx);
-    console.log(tx.toHex());
 
     const result = await client.sendRawTransaction(tx.toHex());
     console.log(result);
@@ -183,7 +177,7 @@ describe("swap classes", () => {
       bitcoin.Transaction.SIGHASH_ALL
     );
 
-    const signer = ECPair.fromPrivateKey(Buffer.from(alice.privkey, "hex"));
+    const signer = ECPair.fromPrivateKey(alice.privkey);
 
     const redeemScriptSig = bitcoin.payments.p2sh({
       network: regtest,
@@ -195,19 +189,13 @@ describe("swap classes", () => {
             signer.sign(signatureHash),
             bitcoin.Transaction.SIGHASH_ALL
           ),
+          alice.pubkey,
           bitcoin.opcodes.OP_0, // for the OP_IF
         ]),
       },
     }).input;
 
     tx.setInputScript(0, redeemScriptSig!);
-
-    console.log(bitcoin.script.toASM(redeemScript));
-    console.log(redeemScript.toString("hex"));
-    console.log(bitcoin.script.toASM(tx.ins[0].script));
-
-    console.log(tx);
-    console.log(tx.toHex());
 
     await expect(async () => {
       await client.sendRawTransaction(tx.toHex());

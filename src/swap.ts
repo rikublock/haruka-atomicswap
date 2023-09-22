@@ -57,8 +57,8 @@ export class SwapBTC extends Swap {
 
     return {
       address,
-      pubkey: keyPair.publicKey.toString("hex"),
-      privkey: keyPair.privateKey.toString("hex"),
+      pubkey: keyPair.publicKey,
+      privkey: keyPair.privateKey,
     };
   }
 
@@ -67,12 +67,15 @@ export class SwapBTC extends Swap {
     return bip68.encode({ blocks: 2 });
   }
 
-  // TODO possibly make private
-  // TODO See https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/test/integration/csv.spec.ts
+  private getKeyId(pubkey: Buffer): Buffer {
+    return bitcoin.crypto.hash160(pubkey);
+  }
+
+  // Examples: https://github.com/bitcoinjs/bitcoinjs-lib/blob/master/test/integration/csv.spec.ts
   public getRedeemScript(
     secretHash: string,
-    refundPubkey: string,
-    swapPubkey: string,
+    refundPubkey: Buffer,
+    swapPubkey: Buffer,
     locktime: number
   ): Buffer {
     const script = bitcoin.script.fromASM(
@@ -81,13 +84,19 @@ export class SwapBTC extends Swap {
           OP_SHA256
           ${secretHash}
           OP_EQUALVERIFY
-          ${swapPubkey}
+          OP_DUP
+          OP_HASH160
+          ${this.getKeyId(swapPubkey).toString("hex")}
+          OP_EQUALVERIFY
           OP_CHECKSIG
       OP_ELSE
           ${bitcoin.script.number.encode(locktime).toString("hex")}
           OP_CHECKSEQUENCEVERIFY
           OP_DROP
-          ${refundPubkey}
+          OP_DUP
+          OP_HASH160
+          ${this.getKeyId(refundPubkey).toString("hex")}
+          OP_EQUALVERIFY
           OP_CHECKSIG
       OP_ENDIF
     `
@@ -107,47 +116,11 @@ export class SwapBTC extends Swap {
     });
 
     if (!p2sh.address) {
-      throw Error("Failed to derive p2sh address");
+      throw Error("Failed to derive p2sh HTLC address");
     }
 
     return p2sh.address;
   }
-
-  /**
-   * Generate input script for refund
-   * Spends from HTLC redeem script
-   */
-
-  // getRefundInputScript(redeemScript: Buffer) {
-  //   const inputRefund = new this.Script();
-
-  //   inputRefund.pushInt(0); // signature placeholder
-  //   inputRefund.pushInt(0);
-  //   inputRefund.pushData(redeemScript.toRaw());
-  //   inputRefund.compile();
-
-  //   return inputRefund;
-  // }
-
-  // public test() {
-  // create a partially signed bitcoin transaction
-  //   const tx = new bitcoin.Psbt({ network: this.network })
-  //     .setVersion(2)
-  //     .addInput({
-  //       hash: unspent.txId,
-  //       index: unspent.vout,
-  //       sequence,
-  //       redeemScript: p2sh.redeem!.output!,
-  //       nonWitnessUtxo,
-  //     })
-  //     .addOutput({
-  //       address: regtestUtils.RANDOM_ADDRESS,
-  //       value: 7e4,
-  //     })
-  //     .signInput(0, alice)
-  //     .finalizeInput(0, csvGetFinalScripts) // See csvGetFinalScripts below
-  //     .extractTransaction();
-  // }
 
   // TODO
   public buildRefundTx() {
@@ -174,8 +147,8 @@ export class SwapXRP extends Swap {
 
     return {
       address: wallet.classicAddress,
-      pubkey: wallet.publicKey,
-      privkey: wallet.privateKey,
+      pubkey: Buffer.from(wallet.publicKey, "hex"),
+      privkey: Buffer.from(wallet.privateKey, "hex"),
     };
   }
 
