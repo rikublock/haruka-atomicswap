@@ -112,7 +112,7 @@ async function main() {
       wallet: walletAliceXRP,
     }
   );
-  console.debug("txCreate", txCreate);
+  console.log("tx", txCreate);
 
   // store offer sequence for later use
   const offerSequence = (txCreate.result as BaseTransaction).Sequence;
@@ -140,6 +140,7 @@ async function main() {
 
   // store utxo info for later use
   const txInfo = await clientBTC.getRawTransaction(txid);
+  console.log("tx", txInfo);
   const vout = txInfo.vout.find((x: any) => x.scriptPubKey.address == address);
   assert(vout);
 
@@ -167,14 +168,15 @@ async function main() {
   const swapTxid = await clientBTC.sendRawTransaction(swapTx);
   await clientBTC.generateToAddress(1, addressMiner);
 
+  const swapTxInfo = await clientBTC.getRawTransaction(swapTxid);
+  console.log("tx", swapTxInfo);
+
   // Note: Bob would monitor the blockchain and wait for Alice to
   // spend the HTLC output. Once detected, he extracts the secret.
 
   // **Bob T_2**
   // extract secret
   console.log("Bob:: extracting secret...");
-  const swapTxInfo = await clientBTC.getRawTransaction(swapTxid);
-
   const revealedSecret = swapBTC.extractSecret(swapTxInfo);
   assert(Buffer.compare(revealedSecret, secret.raw) === 0);
 
@@ -196,7 +198,7 @@ async function main() {
       wallet: walletBobXRP,
     }
   );
-  console.debug("txFinish", txFinish);
+  console.log("tx", txFinish);
 
   // close clients
   await clientXRP.disconnect();
