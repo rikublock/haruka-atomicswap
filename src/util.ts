@@ -17,7 +17,7 @@ export async function sleep(ms: number): Promise<void> {
  * @param secret - hashlock secret
  * @returns tuple of condition and fulfillment as hex string
  */
-export function createCryptoCondition(secret: Buffer): [string, string] {
+export function createCryptoCondition(secret: Buffer): [string, string, string] {
   console.debug("CC:Secret:", secret.toString("hex").toUpperCase());
 
   const hash = crypto.createHash("sha256").update(secret).digest("hex");
@@ -38,5 +38,5 @@ export function createCryptoCondition(secret: Buffer): [string, string] {
     .toUpperCase() as string;
   console.debug("CC:Fulfillment:", fulfillment);
 
-  return [condition, fulfillment];
+  return [hash, condition, fulfillment];
 }

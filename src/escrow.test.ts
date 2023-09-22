@@ -21,7 +21,7 @@ describe("xrpl escrow", () => {
     "3E6A02FCF6C42AB846FD0FB8C13E68C72806432FD7FB775F1036B3067D19CDFF",
     "hex"
   );
-  const [condition, fulfillment] = createCryptoCondition(secret);
+  const [hash, condition, fulfillment] = createCryptoCondition(secret);
 
   let client: Client;
 
