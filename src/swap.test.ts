@@ -1,29 +1,25 @@
-import assert from "node:assert/strict";
-import * as crypto from "node:crypto";
-import util from "util";
-
 import * as bitcoin from "bitcoinjs-lib";
-import * as ecc from "tiny-secp256k1";
-import ECPairFactory from "ecpair";
 import * as bip68 from "bip68";
 
 import { SwapBTC } from "./swap";
 import { RpcClient } from "./rpc";
+import { UTXO } from "./types";
 
 const MIN_BLOCKS = 101;
 
 describe("swap classes", () => {
-  const regtest = bitcoin.networks.regtest;
+  const fee = 0.00001;
   const client = new RpcClient("haruka", "password", "localhost", 18443);
-  const swap = new SwapBTC(regtest);
-
-  const ECPair = ECPairFactory(ecc);
+  const swap = new SwapBTC(bitcoin.networks.regtest, fee);
 
   const alice = swap.createKeyPair(
     "cScfkGjbzzoeewVWmU2hYPUHeVGJRDdFt7WhmrVVGkxpmPP8BHWe"
   );
   const bob = swap.createKeyPair(
     "cMkopUXKWsEzAjfa1zApksGRwjVpJRB3831qM9W4gKZsLwjHXA9x"
+  );
+  const miner = swap.createKeyPair(
+    "cMkopUXKWsEzAjfa1zApksGRwjVpJRB3831qM9W4gKZsMSb4Ubnf"
   );
 
   beforeAll(async () => {
@@ -57,8 +53,6 @@ describe("swap classes", () => {
     // 5 blocks from now
     const sequence = bip68.encode({ blocks: 5 });
 
-    const target = swap.createKeyPair();
-
     const secret = swap.createSecret();
     const redeemScript = swap.getRedeemScript(
       secret.hash,
@@ -68,78 +62,59 @@ describe("swap classes", () => {
     );
     const address = swap.getRedeemAddress(redeemScript);
 
-    const value = 0.17;
-    const fee = 0.0001;
+    // fund HTLC
+    const value = 0.02;
     const txid = await client.sendToAddress(address, value);
-    console.log(txid);
 
     // mine it
-    await client.generateToAddress(1, alice.address);
+    let mined = await client.generateToAddress(1, miner.address);
+    expect(mined?.length).toBe(1);
 
+    // get the UTXO
     const txInfo = await client.getRawTransaction(txid);
     const vout = txInfo.vout.find(
       (x: any) => x.scriptPubKey.address == address
     );
-    assert(vout);
+    expect(vout).toBeDefined();
+    expect(vout).toHaveProperty("n");
+    expect(vout).toHaveProperty("value", value);
 
-    const tx = new bitcoin.Transaction();
-    tx.version = 2;
-    tx.addInput(Buffer.from(txid, "hex").reverse(), vout.n);
-    tx.addOutput(
-      bitcoin.address.toOutputScript(target.address, regtest),
-      Math.floor((value - fee) * 100000000)
-    );
+    const utxo: UTXO = {
+      txid,
+      n: vout.n,
+      amount: vout.value,
+    };
 
-    const signatureHash = tx.hashForSignature(
-      0, // input index
+    // receiver address
+    const target = swap.createKeyPair();
+
+    const tx = swap.buildSwapTx(
+      target.address,
       redeemScript,
-      bitcoin.Transaction.SIGHASH_ALL
+      bob,
+      utxo,
+      secret.secret
     );
 
-    const signer = ECPair.fromPrivateKey(bob.privkey);
-
-    const redeemScriptSig = bitcoin.payments.p2sh({
-      network: regtest,
-      redeem: {
-        network: regtest,
-        output: redeemScript,
-        input: bitcoin.script.compile([
-          bitcoin.script.signature.encode(
-            signer.sign(signatureHash),
-            bitcoin.Transaction.SIGHASH_ALL
-          ),
-          bob.pubkey,
-          Buffer.from(secret.secret, "hex"),
-          bitcoin.opcodes.OP_TRUE, // for the OP_IF
-        ]),
-      },
-    }).input;
-
-    tx.setInputScript(0, redeemScriptSig!);
-
-    const result = await client.sendRawTransaction(tx.toHex());
-    console.log(result);
+    // submit transaction
+    const swapTxid = await client.sendRawTransaction(tx);
+    expect(swapTxid).toBeDefined();
 
     // mint it
-    await client.generateToAddress(1, alice.address);
+    mined = await client.generateToAddress(1, miner.address);
+    expect(mined?.length).toBe(1);
 
-    // TODO verify
-    console.log(await client.getRawTransaction(result));
-
-    // await regtestUtils.verify({
-    //   txId: tx.getId(),
-    //   address: regtestUtils.RANDOM_ADDRESS,
-    //   vout: 0,
-    //   value: 7e4,
-    // });
+    // verify
+    const swapTxInfo = await client.getRawTransaction(swapTxid);
+    expect(swapTxInfo).toBeDefined();
+    expect(swapTxInfo.vout.length).toBe(1);
+    expect(swapTxInfo.vout[0].value).toBe(value - fee);
   });
 
   test("htlc unlock with refund", async () => {
     // 5 blocks from now
     const sequence = bip68.encode({ blocks: 5 });
 
-    const target = swap.createKeyPair();
-
     const secret = swap.createSecret();
     const redeemScript = swap.getRedeemScript(
       secret.hash,
@@ -149,70 +124,61 @@ describe("swap classes", () => {
     );
     const address = swap.getRedeemAddress(redeemScript);
 
-    const value = 0.15;
-    const fee = 0.0001;
+    // fund HTLC
+    const value = 0.02;
     const txid = await client.sendToAddress(address, value);
-    console.log(txid);
 
     // mine it
-    await client.generateToAddress(1, alice.address);
+    let mined = await client.generateToAddress(1, miner.address);
+    expect(mined?.length).toBe(1);
 
+    // get the UTXO
     const txInfo = await client.getRawTransaction(txid);
     const vout = txInfo.vout.find(
       (x: any) => x.scriptPubKey.address == address
     );
-    assert(vout);
+    expect(vout).toBeDefined();
+    expect(vout).toHaveProperty("n");
+    expect(vout).toHaveProperty("value", value);
 
-    const tx = new bitcoin.Transaction();
-    tx.version = 2;
-    tx.addInput(Buffer.from(txid, "hex").reverse(), vout.n, sequence);
-    tx.addOutput(
-      bitcoin.address.toOutputScript(target.address, regtest),
-      Math.floor((value - fee) * 100000000)
-    );
+    const utxo: UTXO = {
+      txid,
+      n: vout.n,
+      amount: vout.value,
+    };
 
-    const signatureHash = tx.hashForSignature(
-      0, // input index
+    // receiver address
+    const target = swap.createKeyPair();
+
+    const tx = swap.buildRefundTx(
+      target.address,
       redeemScript,
-      bitcoin.Transaction.SIGHASH_ALL
+      alice,
+      utxo,
+      sequence
     );
 
-    const signer = ECPair.fromPrivateKey(alice.privkey);
-
-    const redeemScriptSig = bitcoin.payments.p2sh({
-      network: regtest,
-      redeem: {
-        network: regtest,
-        output: redeemScript,
-        input: bitcoin.script.compile([
-          bitcoin.script.signature.encode(
-            signer.sign(signatureHash),
-            bitcoin.Transaction.SIGHASH_ALL
-          ),
-          alice.pubkey,
-          bitcoin.opcodes.OP_0, // for the OP_IF
-        ]),
-      },
-    }).input;
-
-    tx.setInputScript(0, redeemScriptSig!);
-
+    // should not allow early refund
     await expect(async () => {
-      await client.sendRawTransaction(tx.toHex());
+      await client.sendRawTransaction(tx);
     }).rejects.toThrow("non-BIP68-final");
 
-    await client.generateToAddress(5, alice.address);
+    // mint until unlocked
+    mined = await client.generateToAddress(4, miner.address);
+    expect(mined?.length).toBe(4);
 
-    const result = await client.sendRawTransaction(tx.toHex());
+    // submit transaction
+    const swapTxid = await client.sendRawTransaction(tx);
+    expect(swapTxid).toBeDefined();
 
-    // TODO verify
-    console.log(await client.getRawTransaction(result));
+    // mint it
+    mined = await client.generateToAddress(1, miner.address);
+    expect(mined?.length).toBe(1);
 
-    // await regtestUtils.verify({
-    //   txId: tx.getId(),
-    //   address: regtestUtils.RANDOM_ADDRESS,
-    //   vout: 0,
-    //   value: 7e4,
-    // });
+    // verify
+    const swapTxInfo = await client.getRawTransaction(swapTxid);
+    expect(swapTxInfo).toBeDefined();
+    expect(swapTxInfo.vout.length).toBe(1);
+    expect(swapTxInfo.vout[0].value).toBe(value - fee);
   });
 });

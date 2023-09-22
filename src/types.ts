@@ -3,3 +3,9 @@ export type KeyInfo = {
   pubkey: Buffer;
   privkey: Buffer;
 };
+
+export type UTXO = {
+  txid: string;
+  n: number;
+  amount: number;
+}

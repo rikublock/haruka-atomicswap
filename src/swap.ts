@@ -9,7 +9,9 @@ import { Client, ECDSA, LedgerEntry, Wallet, xrpToDrops } from "xrpl";
 import { createCryptoCondition, RIPPLE_EPOCH_OFFSET } from "./util";
 import { RpcClient } from "./rpc";
 import config from "./config";
-import { KeyInfo } from "./types";
+import { KeyInfo, UTXO } from "./types";
+
+const ECPair = ECPairFactory(ecc);
 
 abstract class Swap {
   public abstract createHTLC(): Promise<boolean>;
@@ -21,7 +23,7 @@ abstract class Swap {
     const [hash, condition, fulfillment] = createCryptoCondition(secret);
 
     return {
-      secret: secret.toString("hex").toUpperCase(),
+      secret,
       hash,
       condition,
       fulfillment,
@@ -31,14 +33,15 @@ abstract class Swap {
 
 export class SwapBTC extends Swap {
   private network: bitcoin.Network;
+  private fee: number;
 
-  constructor(network: bitcoin.Network) {
+  constructor(network: bitcoin.Network, fee: number = 0.00001) {
     super();
     this.network = network;
+    this.fee = fee;
   }
 
   public createKeyPair(wif?: string): KeyInfo {
-    const ECPair = ECPairFactory(ecc);
     let keyPair: ECPairInterface;
     if (wif) {
       keyPair = ECPair.fromWIF(wif, this.network);
@@ -107,6 +110,11 @@ export class SwapBTC extends Swap {
     return script;
   }
 
+  /**
+   * Compute script hash address
+   * @param script
+   * @returns address
+   */
   public getRedeemAddress(script: Buffer): string {
     const p2sh = bitcoin.payments.p2sh({
       redeem: {
@@ -122,9 +130,111 @@ export class SwapBTC extends Swap {
     return p2sh.address;
   }
 
-  // TODO
-  public buildRefundTx() {
-    return null;
+  /**
+   * Build a transaction to unlock the HTLC using the secret (preimage)
+   * @param address - receiver address, send everything to this address
+   * @param redeemScript - HTLC script
+   * @param key - signer key
+   * @param utxo - funding transaction output
+   * @param secret - HTLC secret (preimage)
+   * @returns raw transaction hex
+   */
+  public buildSwapTx(
+    address: string,
+    redeemScript: Buffer,
+    key: KeyInfo,
+    utxo: UTXO,
+    secret: Buffer
+  ): string {
+    const signer = ECPair.fromPrivateKey(key.privkey);
+
+    const tx = new bitcoin.Transaction();
+    tx.version = 2;
+    tx.addInput(Buffer.from(utxo.txid, "hex").reverse(), utxo.n);
+    tx.addOutput(
+      bitcoin.address.toOutputScript(address, this.network),
+      Math.floor((utxo.amount - this.fee) * 100000000)
+    );
+
+    const signatureHash = tx.hashForSignature(
+      0, // input index
+      redeemScript,
+      bitcoin.Transaction.SIGHASH_ALL
+    );
+
+    const redeemScriptSig = bitcoin.payments.p2sh({
+      network: this.network,
+      redeem: {
+        network: this.network,
+        output: redeemScript,
+        input: bitcoin.script.compile([
+          bitcoin.script.signature.encode(
+            signer.sign(signatureHash),
+            bitcoin.Transaction.SIGHASH_ALL
+          ),
+          key.pubkey,
+          secret,
+          bitcoin.opcodes.OP_TRUE, // for OP_IF
+        ]),
+      },
+    }).input;
+
+    tx.setInputScript(0, redeemScriptSig!);
+
+    return tx.toHex();
+  }
+
+  /**
+   * Build a transaction to refund the expired HTLC
+   * @param address - receiver address, send everything to this address
+   * @param redeemScript - HTLC script
+   * @param key - signer key
+   * @param utxo - funding transaction output
+   * @param sequence - locktime sequence number (needs to match the number used in the redeem script)
+   * @returns raw transaction hex
+   */
+  public buildRefundTx(
+    address: string,
+    redeemScript: Buffer,
+    key: KeyInfo,
+    utxo: UTXO,
+    sequence: number
+  ): string {
+    const signer = ECPair.fromPrivateKey(key.privkey);
+
+    const tx = new bitcoin.Transaction();
+    tx.version = 2;
+    tx.addInput(Buffer.from(utxo.txid, "hex").reverse(), utxo.n, sequence);
+    tx.addOutput(
+      bitcoin.address.toOutputScript(address, this.network),
+      Math.floor((utxo.amount - this.fee) * 100000000)
+    );
+
+    const signatureHash = tx.hashForSignature(
+      0, // input index
+      redeemScript,
+      bitcoin.Transaction.SIGHASH_ALL
+    );
+
+    const redeemScriptSig = bitcoin.payments.p2sh({
+      network: this.network,
+      redeem: {
+        network: this.network,
+        output: redeemScript,
+        input: bitcoin.script.compile([
+          bitcoin.script.signature.encode(
+            signer.sign(signatureHash),
+            bitcoin.Transaction.SIGHASH_ALL
+          ),
+          key.pubkey,
+          bitcoin.opcodes.OP_0, // for OP_IF
+        ]),
+      },
+    }).input;
+
+    tx.setInputScript(0, redeemScriptSig!);
+
+    return tx.toHex();
   }
 
   public async createHTLC(): Promise<boolean> {
