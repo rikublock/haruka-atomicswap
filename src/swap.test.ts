@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
-
 import * as crypto from "node:crypto";
+import util from "util";
+
 import * as bitcoin from "bitcoinjs-lib";
 import * as ecc from "tiny-secp256k1";
 import ECPairFactory from "ecpair";
 import * as bip68 from "bip68";
-import util from "util";
 
 import { SwapBTC } from "./swap";
 import { RpcClient } from "./rpc";
@@ -73,6 +73,9 @@ describe("swap classes", () => {
     const txid = await client.sendToAddress(address, value);
     console.log(txid);
 
+    // mine it
+    await client.generateToAddress(1, alice.address);
+
     const txInfo = await client.getRawTransaction(txid);
     const vout = txInfo.vout.find(
       (x: any) => x.scriptPubKey.address == address
@@ -81,7 +84,7 @@ describe("swap classes", () => {
 
     const tx = new bitcoin.Transaction();
     tx.version = 2;
-    tx.addInput(Buffer.from(txid, "hex").reverse(), vout.n, sequence);
+    tx.addInput(Buffer.from(txid, "hex").reverse(), vout.n);
     tx.addOutput(
       bitcoin.address.toOutputScript(target.address, regtest),
       Math.floor((value - fee) * 100000000)
@@ -112,10 +115,6 @@ describe("swap classes", () => {
     }).input;
 
     tx.setInputScript(0, redeemScriptSig!);
-    // TODO set sequence
-
-    // TODO why do we have to do that
-    await client.generateToAddress(5, alice.address);
 
     console.log(bitcoin.script.toASM(redeemScript));
     console.log(redeemScript.toString("hex"));
@@ -127,6 +126,7 @@ describe("swap classes", () => {
     const result = await client.sendRawTransaction(tx.toHex());
     console.log(result);
 
+    // mint it
     await client.generateToAddress(1, alice.address);
 
     // TODO verify
@@ -159,6 +159,9 @@ describe("swap classes", () => {
     const fee = 0.0001;
     const txid = await client.sendToAddress(address, value);
     console.log(txid);
+
+    // mine it
+    await client.generateToAddress(1, alice.address);
 
     const txInfo = await client.getRawTransaction(txid);
     const vout = txInfo.vout.find(
@@ -198,10 +201,6 @@ describe("swap classes", () => {
     }).input;
 
     tx.setInputScript(0, redeemScriptSig!);
-    // TODO set sequence
-
-    // TODO why do we have to do that
-    await client.generateToAddress(5, alice.address);
 
     console.log(bitcoin.script.toASM(redeemScript));
     console.log(redeemScript.toString("hex"));
@@ -210,10 +209,13 @@ describe("swap classes", () => {
     console.log(tx);
     console.log(tx.toHex());
 
-    const result = await client.sendRawTransaction(tx.toHex());
-    console.log(result);
+    await expect(async () => {
+      await client.sendRawTransaction(tx.toHex());
+    }).rejects.toThrow("non-BIP68-final");
 
-    await client.generateToAddress(1, alice.address);
+    await client.generateToAddress(5, alice.address);
+
+    const result = await client.sendRawTransaction(tx.toHex());
 
     // TODO verify
     console.log(await client.getRawTransaction(result));

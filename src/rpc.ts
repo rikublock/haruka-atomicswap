@@ -55,7 +55,8 @@ export class RpcClient {
       return response.data.result;
     } catch (err) {
       if (axios.isAxiosError(err)) {
-        console.error(err.response?.data);
+        console.debug(err.response?.data);
+        throw Error(err.response?.data.error.message);
       }
       throw err;
     }
