@@ -10,20 +10,23 @@ import { createCryptoCondition, RIPPLE_EPOCH_OFFSET } from "./util";
 import { RpcClient } from "./rpc";
 import config from "./config";
 import { KeyInfo, UTXO } from "./types";
+import assert from "node:assert";
+import { typeforce } from "bitcoinjs-lib/src/types";
 
-const ECPair = ECPairFactory(ecc);
+export const ECPair = ECPairFactory(ecc);
+
+// TODO add version that builds scripts with TWC
 
 abstract class Swap {
-  public abstract createHTLC(): Promise<boolean>;
   public abstract getLockTime(): number;
   public abstract createKeyPair(): Promise<KeyInfo> | KeyInfo;
 
   public createSecret() {
-    const secret = crypto.randomBytes(32);
-    const [hash, condition, fulfillment] = createCryptoCondition(secret);
+    const raw = crypto.randomBytes(32);
+    const [hash, condition, fulfillment] = createCryptoCondition(raw);
 
     return {
-      secret,
+      raw,
       hash,
       condition,
       fulfillment,
@@ -128,6 +131,21 @@ export class SwapBTC extends Swap {
     }
 
     return p2sh.address;
+  }
+  public extractSecret(tx: Record<string, any>): Buffer {
+    const chunks = bitcoin.script.decompile(
+      Buffer.from(tx.vin[0].scriptSig.hex, "hex")
+    );
+
+    if (!chunks || chunks.length < 2) {
+      throw Error("Failed to decompile tx scriptSig");
+    }
+
+    if (!(chunks[2] instanceof Buffer)) {
+      throw Error("Failed to decompile tx scriptSig (unexpected type)");
+    }
+
+    return chunks[2];
   }
 
   /**
@@ -236,10 +254,6 @@ export class SwapBTC extends Swap {
 
     return tx.toHex();
   }
-
-  public async createHTLC(): Promise<boolean> {
-    return false;
-  }
 }
 
 export class SwapXRP extends Swap {
@@ -252,7 +266,7 @@ export class SwapXRP extends Swap {
     return 20 * 60; // 20 mins
   }
 
-  public createKeyPair(): KeyInfo {
+  public createKeyPair(fund?: boolean): KeyInfo {
     const wallet = Wallet.generate(ECDSA.secp256k1);
 
     return {
@@ -260,9 +274,5 @@ export class SwapXRP extends Swap {
       pubkey: Buffer.from(wallet.publicKey, "hex"),
       privkey: Buffer.from(wallet.privateKey, "hex"),
     };
-  }
-
-  public async createHTLC(): Promise<boolean> {
-    return false;
   }
 }

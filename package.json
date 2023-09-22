@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "HTLC based atomic swaps",
   "scripts": {
-    "start": "yarn ts-node src/swap.ts",
+    "start": "yarn ts-node src/run.ts",
     "lint": "eslint --ext .ts,.tsx .",
     "test": "jest"
   },

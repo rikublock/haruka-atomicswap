@@ -3,6 +3,7 @@ import * as crypto from "node:crypto";
 // @ts-ignore
 import * as cc from "five-bells-condition";
 
+export const BITCOIN_MIN_BLOCKS = 101;
 export const RIPPLE_EPOCH_OFFSET = 946684800;
 
 export async function sleep(ms: number): Promise<void> {

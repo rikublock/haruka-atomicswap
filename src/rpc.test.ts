@@ -1,6 +1,5 @@
+import { BITCOIN_MIN_BLOCKS } from "./util";
 import { RpcClient } from "./rpc";
-
-const MIN_BLOCKS = 101;
 
 describe("btc rpc client", () => {
   const client = new RpcClient("haruka", "password", "localhost", 18443);
@@ -14,9 +13,9 @@ describe("btc rpc client", () => {
 
     // ensure we have available coins to spend
     const count = await client.getBlockCount();
-    if (count < MIN_BLOCKS) {
+    if (count < BITCOIN_MIN_BLOCKS) {
       const address = await client.getNewAddress();
-      await client.generateToAddress(MIN_BLOCKS - count, address);
+      await client.generateToAddress(BITCOIN_MIN_BLOCKS - count, address);
     }
   });
 
